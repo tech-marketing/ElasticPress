@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
-class EP_Sync_Manager {
+class EP_Post_Sync_Manager {
 
 	/**
 	 * Placeholder method
@@ -21,11 +21,19 @@ class EP_Sync_Manager {
 
 	/**
 	 * Save posts for indexing later
-	 * 
+	 *
 	 * @since  2.0
 	 * @var    array
 	 */
 	public $sync_post_queue = array();
+
+	/**
+	 * Indexable object for post
+	 *
+	 * @since  2.5
+	 * @var EP_Indexable
+	 */
+	public $indexable;
 
 	/**
 	 * Setup actions and filters
@@ -33,6 +41,8 @@ class EP_Sync_Manager {
 	 * @since 0.1.2
 	 */
 	public function setup() {
+		$this->indexable = ep_get_indexable( 'post' );
+
 		add_action( 'wp_insert_post', array( $this, 'action_sync_on_update' ), 999, 3 );
 		add_action( 'add_attachment', array( $this, 'action_sync_on_update' ), 999, 3 );
 		add_action( 'edit_attachment', array( $this, 'action_sync_on_update' ), 999, 3 );
@@ -45,7 +55,7 @@ class EP_Sync_Manager {
 		add_action( 'added_post_meta', array( $this, 'action_queue_meta_sync' ), 10, 4 );
 		add_action( 'shutdown', array( $this, 'action_index_sync_queue' ) );
 	}
-	
+
 	/**
 	 * Remove actions and filters
 	 *
@@ -84,7 +94,7 @@ class EP_Sync_Manager {
 
 	/**
 	 * When whitelisted meta is updated, queue the post for reindex
-	 * 
+	 *
 	 * @param  int $meta_id
 	 * @param  int $object_id
 	 * @param  string $meta_key
@@ -102,8 +112,8 @@ class EP_Sync_Manager {
 		if ( ! empty( $importer ) ) {
 			return;
 		}
-		
-		$indexable_post_statuses = ep_get_indexable_post_status();
+
+		$indexable_post_statuses = $this->indexable->get_indexable_post_status();
 		$post_type               = get_post_type( $object_id );
 
 		// Allow inherit as post status if post type is attachment
@@ -124,12 +134,12 @@ class EP_Sync_Manager {
 		}
 
 		if ( in_array( $post->post_status, $indexable_post_statuses ) ) {
-			$indexable_post_types = ep_get_indexable_post_types();
+			$indexable_post_types = $this->indexable->get_indexable_post_types();
 
 			if ( in_array( $post_type, $indexable_post_types ) ) {
 
 				// Using this function to hook in after all the meta applicable filters
-				$prepared_post = ep_prepare_post( $object_id );
+				$prepared_post = $this->indexable->prepare_post( $object_id );
 
 				// Make sure meta key that was changed is actually relevant
 				if ( ! isset( $prepared_post['meta'][$meta_key] ) ) {
@@ -147,8 +157,8 @@ class EP_Sync_Manager {
 	 * @param $blog_id
 	 */
 	public function action_delete_blog_from_index( $blog_id ) {
-		if ( ep_index_exists( ep_get_index_name( $blog_id ) ) && ! apply_filters( 'ep_keep_index', false ) ) {
-			ep_delete_index( ep_get_index_name( $blog_id ) );
+		if ( ep_index_exists( $this->indexable->get_index_name( $blog_id ) ) && ! apply_filters( 'ep_keep_index', false ) ) {
+			ep_delete_index( $this->indexable->get_index_name( $blog_id ) );
 		}
 	}
 
@@ -166,7 +176,7 @@ class EP_Sync_Manager {
 
 		do_action( 'ep_delete_post', $post_id );
 
-		ep_delete_post( $post_id, false );
+		$this->indexable->delete( $post_id, false );
 	}
 
 	/**
@@ -182,10 +192,10 @@ class EP_Sync_Manager {
 		if ( ! empty( $importer ) ) {
 			return;
 		}
-		
-		$indexable_post_statuses = ep_get_indexable_post_status();
+
+		$indexable_post_statuses = $this->indexable->get_indexable_post_status();
 		$post_type               = get_post_type( $post_ID );
-		
+
 		if ( 'attachment' === $post_type ) {
 			$indexable_post_statuses[] = 'inherit';
 		}
@@ -217,7 +227,7 @@ class EP_Sync_Manager {
 		} else {
 			$post_type = get_post_type( $post_ID );
 
-			$indexable_post_types = ep_get_indexable_post_types();
+			$indexable_post_types = $this->indexable->get_indexable_post_types();
 
 			if ( in_array( $post_type, $indexable_post_types ) ) {
 
@@ -226,23 +236,6 @@ class EP_Sync_Manager {
 				$this->sync_post( $post_ID, false );
 			}
 		}
-	}
-	
-	/**
-	 * Return a singleton instance of the current class
-	 *
-	 * @since 0.1.0
-	 * @return EP_Sync_Manager
-	 */
-	public static function factory() {
-		static $instance = false;
-
-		if ( ! $instance ) {
-			$instance = new self();
-			$instance->setup();
-		}
-
-		return $instance;
 	}
 
 	/**
@@ -261,24 +254,41 @@ class EP_Sync_Manager {
 			return false;
 		}
 
-		$post_args = ep_prepare_post( $post_id );
+		$post_args = $this->indexable->prepare_post( $post_id );
 
 		if ( apply_filters( 'ep_post_sync_kill', false, $post_args, $post_id ) ) {
 			return false;
 		}
 
-		$response = ep_index_post( $post_args, $blocking );
+		$response = $this->indexable->index( $post_args, $blocking );
 
 		return $response;
 	}
+
+	/**
+	 * Return a singleton instance of the current class
+	 *
+	 * @since 0.1.0
+	 * @return EP_Sync_Manager
+	 */
+	public static function factory() {
+		static $instance = false;
+
+		if ( ! $instance ) {
+			$instance = new self();
+			$instance->setup();
+		}
+
+		return $instance;
+	}
 }
 
-$ep_sync_manager = EP_Sync_Manager::factory();
+$ep_post_sync_manager = EP_Post_Sync_Manager::factory();
 
 /**
  * Accessor functions for methods in above class. See doc blocks above for function details.
  */
 
 function ep_sync_post( $post_id, $blocking = true ) {
-	return EP_Sync_Manager::factory()->sync_post( $post_id, $blocking );
+	return EP_Post_Sync_Manager::factory()->sync_post( $post_id, $blocking );
 }

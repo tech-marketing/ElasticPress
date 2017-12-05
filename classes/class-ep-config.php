@@ -105,56 +105,6 @@ class EP_Config {
 	}
 
 	/**
-	 * Generates the index name for the current site
-	 *
-	 * @param int $blog_id (optional) Blog ID. Defaults to current blog.
-	 * @since 0.9
-	 * @return string
-	 */
-	public function get_index_name( $blog_id = null ) {
-		if ( ! $blog_id ) {
-			$blog_id = get_current_blog_id();
-		}
-
-		$site_url = get_site_url( $blog_id );
-
-		if ( ! empty( $site_url ) ) {
-			$index_name = preg_replace( '#https?://(www\.)?#i', '', $site_url );
-			$index_name = preg_replace( '#[^\w]#', '', $index_name ) . '-' . $blog_id;
-		} else {
-			$index_name = false;
-		}
-
-		if ( defined( 'EP_INDEX_PREFIX' ) && EP_INDEX_PREFIX ) {
-			$index_name = EP_INDEX_PREFIX . $index_name;
-		}
-
-		return apply_filters( 'ep_index_name', $index_name, $blog_id );
-	}
-
-	/**
-	 * Returns indexable post types for the current site
-	 *
-	 * @since 0.9
-	 * @return mixed|void
-	 */
-	public function get_indexable_post_types() {
-		$post_types = get_post_types( array( 'public' => true ) );
-
-		return apply_filters( 'ep_indexable_post_types', $post_types );
-	}
-
-	/**
-	 * Return indexable post_status for the current site
-	 *
-	 * @since 1.3
-	 * @return array
-	 */
-	public function get_indexable_post_status() {
-		return apply_filters( 'ep_indexable_post_status', array( 'publish' ) );
-	}
-
-	/**
 	 * Generate network index name for alias
 	 *
 	 * @since 0.9
@@ -195,6 +145,38 @@ class EP_Config {
 
 		return false;
 
+	}
+
+	/**
+	 * Wrapper function for get_sites - allows us to have one central place for the `ep_indexable_sites` filter
+	 *
+	 * @param int $limit The maximum amount of sites retrieved, Use 0 to return all sites
+	 *
+	 * @return mixed|void
+	 */
+	public function get_sites( $limit = 0 ) {
+		$args = apply_filters( 'ep_indexable_sites_args', array(
+			'limit' => $limit,
+			'number' => $limit,
+		) );
+
+		if ( function_exists( 'get_sites' ) ) {
+			$site_objects = get_sites( $args );
+			$sites = array();
+
+			foreach ( $site_objects as $site ) {
+				$sites[] = array(
+					'blog_id' => $site->blog_id,
+					'domain'  => $site->domain,
+					'path'    => $site->path,
+					'site_id' => $site->site_id,
+				);
+			}
+		} else {
+			$sites = wp_get_sites( $args );
+		}
+
+		return apply_filters( 'ep_indexable_sites', $sites );
 	}
 }
 

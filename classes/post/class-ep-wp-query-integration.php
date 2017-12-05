@@ -22,6 +22,14 @@ class EP_WP_Query_Integration {
 	private $posts_by_query = array();
 
 	/**
+	 * Indexable object for post
+	 *
+	 * @since  2.5
+	 * @var EP_Indexable
+	 */
+	public $indexable;
+
+	/**
 	 * Placeholder method
 	 *
 	 * @since 0.9
@@ -37,6 +45,8 @@ class EP_WP_Query_Integration {
 		if ( ep_is_indexing() ) {
 			return;
 		}
+
+		$this->indexable = ep_get_indexable( 'post' );
 
 		// Make sure we return nothing for MySQL posts query
 		add_filter( 'posts_request', array( $this, 'filter_posts_request' ), 10, 2 );
@@ -70,7 +80,7 @@ class EP_WP_Query_Integration {
 	 * @since 0.9
 	 */
 	public function action_pre_get_posts( $query ) {
-		if ( ! ep_elasticpress_enabled( $query ) || apply_filters( 'ep_skip_query_integration', false, $query ) ) {
+		if ( ! $this->indexable->elasticpress_enabled( $query ) || apply_filters( 'ep_skip_query_integration', false, $query ) ) {
 			return;
 		}
 
@@ -108,7 +118,7 @@ class EP_WP_Query_Integration {
 			return;
 		}
 
-		if ( ! ep_elasticpress_enabled( $this->query_stack[0] ) || apply_filters( 'ep_skip_query_integration', false, $this->query_stack[0] ) ) {
+		if ( ! $this->indexable->elasticpress_enabled( $this->query_stack[0] ) || apply_filters( 'ep_skip_query_integration', false, $this->query_stack[0] ) ) {
 			return;
 		}
 
@@ -149,7 +159,7 @@ class EP_WP_Query_Integration {
 
 		array_pop( $this->query_stack );
 
-		if ( ! ep_elasticpress_enabled( $query ) || apply_filters( 'ep_skip_query_integration', false, $query )  ) {
+		if ( ! $this->indexable->elasticpress_enabled( $query ) || apply_filters( 'ep_skip_query_integration', false, $query )  ) {
 			return;
 		}
 
@@ -166,7 +176,7 @@ class EP_WP_Query_Integration {
 	 * @return array
 	 */
 	public function filter_the_posts( $posts, $query ) {
-		if ( ! ep_elasticpress_enabled( $query ) || apply_filters( 'ep_skip_query_integration', false, $query ) || ! isset( $this->posts_by_query[spl_object_hash( $query )] ) ) {
+		if ( ! $this->indexable->elasticpress_enabled( $query ) || apply_filters( 'ep_skip_query_integration', false, $query ) || ! isset( $this->posts_by_query[ spl_object_hash( $query ) ] ) ) {
 			return $posts;
 		}
 
@@ -184,7 +194,7 @@ class EP_WP_Query_Integration {
 	 * @return string
 	 */
 	public function filter_found_posts_query( $sql, $query ) {
-		if ( ( isset( $query->elasticsearch_success ) && false === $query->elasticsearch_success ) || ( ! ep_elasticpress_enabled( $query ) || apply_filters( 'ep_skip_query_integration', false, $query ) )  ) {
+		if ( ( isset( $query->elasticsearch_success ) && false === $query->elasticsearch_success ) || ( ! $this->indexable->elasticpress_enabled( $query ) || apply_filters( 'ep_skip_query_integration', false, $query ) )  ) {
 			return $sql;
 		}
 
@@ -207,13 +217,14 @@ class EP_WP_Query_Integration {
 	 */
 	public function posts_fields( $posts, $query ) {
 		// Make sure the query is EP enabled.
-		if ( ! ep_elasticpress_enabled( $query ) || apply_filters( 'ep_skip_query_integration', false, $query ) || ! isset( $this->posts_by_query[ spl_object_hash( $query ) ] ) ) {
+		if ( ! $this->indexable->elasticpress_enabled( $query ) || apply_filters( 'ep_skip_query_integration', false, $query ) || ! isset( $this->posts_by_query[ spl_object_hash( $query ) ] ) ) {
 			return $posts;
 		}
 
 		// Determine how we should return the posts. The official WP_Query
 		// supports: ids, id=>parent and post objects.
 		$fields = $query->get( 'fields', '' );
+
 		if ( 'ids' === $fields || 'id=>parent' === $fields ) {
 			return $this->posts_by_query[ spl_object_hash( $query ) ];
 		}
@@ -233,7 +244,7 @@ class EP_WP_Query_Integration {
 	public function filter_posts_request( $request, $query ) {
 		global $wpdb;
 
-		if ( ! ep_elasticpress_enabled( $query ) || apply_filters( 'ep_skip_query_integration', false, $query ) ) {
+		if ( ! $this->indexable->elasticpress_enabled( $query ) || apply_filters( 'ep_skip_query_integration', false, $query ) ) {
 			return $request;
 		}
 
@@ -278,7 +289,7 @@ class EP_WP_Query_Integration {
 				$scope = $query_vars['sites'];
 			}
 
-			$formatted_args = ep_format_args( $query_vars );
+			$formatted_args = $this->indexable->format_args( $query_vars );
 
 			/**
 			 * Filter search scope
@@ -290,7 +301,12 @@ class EP_WP_Query_Integration {
 			 */
 			$scope = apply_filters( 'ep_search_scope', $scope );
 
-			$ep_query = ep_query( $formatted_args, $query->query_vars, $scope );
+			$args = array(
+				'query_vars' => $query->query_vars,
+				'scope'      => $scope,
+			);
+
+			$ep_query = $this->indexable->query( $formatted_args, $args );
 
 			if ( false === $ep_query ) {
 				$query->elasticsearch_success = false;
@@ -321,7 +337,7 @@ class EP_WP_Query_Integration {
 			do_action( 'ep_wp_query_non_cached_search', $new_posts, $ep_query, $query );
 		}
 
-		$this->posts_by_query[spl_object_hash( $query )] = $new_posts;
+		$this->posts_by_query[ spl_object_hash( $query ) ] = $new_posts;
 
 		do_action( 'ep_wp_query_search', $new_posts, $ep_query, $query );
 
@@ -429,6 +445,7 @@ class EP_WP_Query_Integration {
 			$post->elasticsearch = true; // Super useful for debugging
 			$new_posts[] = $post;
 		}
+
 		return $new_posts;
 	}
 

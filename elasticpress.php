@@ -37,7 +37,12 @@ define( 'EP_ES_VERSION_MAX', '5.6' );
 define( 'EP_ES_VERSION_MIN', '1.7' );
 
 require_once( 'classes/class-ep-config.php' );
-require_once( 'classes/class-ep-api.php' );
+require_once( 'classes/class-ep-elasticsearch.php' );
+require_once( 'classes/class-ep-indexable.php' );
+
+require_once( 'classes/post/class-ep-indexable-post.php' );
+
+EP_Indexable::factory()->register_indexable( new EP_Indexable_Post() );
 
 // Define a constant if we're network activated to allow plugin to respond accordingly.
 $network_activated = ep_is_network_activated( plugin_basename( __FILE__ ) );
@@ -54,12 +59,12 @@ require_once( 'classes/class-ep-features.php' );
 require_once( 'classes/class-ep-dashboard.php' );
 
 // Include core features
-require_once( 'features/search/search.php' );
+/*require_once( 'features/search/search.php' );
 require_once( 'features/related-posts/related-posts.php' );
 require_once( 'features/protected-content/protected-content.php' );
 require_once( 'features/woocommerce/woocommerce.php' );
 require_once( 'features/documents/documents.php' );
-require_once( 'features/autosuggest/autosuggest.php' );
+require_once( 'features/autosuggest/autosuggest.php' );*/
 
 /**
  * WP CLI Commands
